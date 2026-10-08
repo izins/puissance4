@@ -457,7 +457,7 @@ static void renommerJoueurEnCours(Partie *partie)
     printf("\n");
     if (lireNomJoueur(nouveauNom, nomParDefaut, num)) {
         size_t idx = (size_t)(num - 1);
-        snprintf(partie->noms[idx], TAILLE_NOM, "%s", nouveauNom);
+        snprintf(partie->noms[idx], TAILLE_NOM, "%.*s", TAILLE_NOM - 1, nouveauNom);
         printf(COULEUR_SUCCES
                "  -> Le Joueur %d (%c) s'appelle desormais %s !"
                COULEUR_REINITIALISATION "\n\n",
@@ -475,7 +475,7 @@ int demanderColonne(const Partie *partie)
     int joueur = partie->joueurCourant;
 
     for (;;) {
-        printf("%s%s (%c)%s, entrez la colonne (1-%d) [0:passer, n:renommer] : ",
+        printf("%s%s (%c)%s, entrez la colonne (1-%d) [0:passer, n:nom, r:reset] : ",
                couleurJoueur(joueur),
                partie->noms[(size_t)(joueur - 1)],
                symboleJoueur(joueur),
@@ -497,10 +497,15 @@ int demanderColonne(const Partie *partie)
             return -3;  /* Rename player */
         }
 
+        /* Support 'r', 'R' for resetting/restarting the current game */
+        if (tampon[0] == 'r' || tampon[0] == 'R') {
+            return -4;  /* Reset game */
+        }
+
         int choix;
         if (!lireEntier(tampon, &choix)) {
             printf(COULEUR_ERREUR
-                   "  Saisie invalide. Entrez 1-%d, 0 (passer) ou n (renommer)."
+                   "  Saisie invalide. Entrez 1-%d, 0 (passer), n (nom) ou r (reset)."
                    COULEUR_REINITIALISATION "\n", NB_COLONNES);
             continue;
         }
@@ -575,6 +580,17 @@ void jouerPartie(Partie *partie)
         if (colonne == -3) {
             /* Rename a player mid-game */
             renommerJoueurEnCours(partie);
+            continue;
+        }
+
+        if (colonne == -4) {
+            /* Reset/Restart game mid-game */
+            initialiserGrille(partie);
+            partie->joueurCourant = JOUEUR_X;
+            printf("\n" COULEUR_IMPORTANT
+                   "  -> La grille a ete reinitialisee ! C'est a %s (X) de recommencer."
+                   COULEUR_REINITIALISATION "\n\n",
+                   partie->noms[0]);
             continue;
         }
 
@@ -690,25 +706,22 @@ int lireNomJoueur(char *destination, const char *nomParDefaut, int numero)
 
     char tampon[TAILLE_TAMPON_SAISIE];
 
-    printf("  Enter name for Player %d (default: %s): ", numero, nomParDefaut);
+    printf("  Entrez le nom du Joueur %d (par defaut : %s) : ", numero, nomParDefaut);
     fflush(stdout);
 
     if (!lireLigne(tampon, TAILLE_TAMPON_SAISIE)) {
         /* EOF: use default name */
-        strncpy(destination, nomParDefaut, TAILLE_NOM - 1);
-        destination[TAILLE_NOM - 1] = '\0';
+        snprintf(destination, TAILLE_NOM, "%.*s", TAILLE_NOM - 1, nomParDefaut);
         return 0;
     }
 
     if (tampon[0] == '\0') {
         /* Empty input: use default name, announce it */
-        strncpy(destination, nomParDefaut, TAILLE_NOM - 1);
-        destination[TAILLE_NOM - 1] = '\0';
-        printf(COULEUR_DIM "  (Using default name: %s)"
+        snprintf(destination, TAILLE_NOM, "%.*s", TAILLE_NOM - 1, nomParDefaut);
+        printf(COULEUR_DIM "  (Nom par defaut utilise : %s)"
                COULEUR_REINITIALISATION "\n", nomParDefaut);
     } else {
-        strncpy(destination, tampon, TAILLE_NOM - 1);
-        destination[TAILLE_NOM - 1] = '\0';
+        snprintf(destination, TAILLE_NOM, "%.*s", TAILLE_NOM - 1, tampon);
     }
 
     return 1;
@@ -718,12 +731,33 @@ int demanderRejouer(void)
 {
     char tampon[TAILLE_TAMPON_SAISIE];
 
-    printf("  Play again? (y/n): ");
-    fflush(stdout);
+    printf("\n" COULEUR_TITRE
+           "  === FIN DE LA PARTIE ===" COULEUR_REINITIALISATION "\n"
+           "  1. Rejouer directement avec les MEMES joueurs\n"
+           "  2. Nouvelle partie avec de NOUVEAUX joueurs\n"
+           "  3. Retour au menu principal\n\n");
 
-    if (!lireLigne(tampon, TAILLE_TAMPON_SAISIE)) {
-        return 0;  /* EOF means no */
+    for (;;) {
+        printf("  Votre choix (1-3) [defaut: 1] : ");
+        fflush(stdout);
+
+        if (!lireLigne(tampon, TAILLE_TAMPON_SAISIE)) {
+            return 0;  /* EOF */
+        }
+
+        /* Default to 1 (same players) if user hits Enter */
+        if (tampon[0] == '\0' || tampon[0] == '1' || tampon[0] == 'm' || tampon[0] == 'M') {
+            return 2;  /* Replay with same players */
+        }
+        if (tampon[0] == '2' || tampon[0] == 'n' || tampon[0] == 'N') {
+            return 1;  /* New players */
+        }
+        if (tampon[0] == '3' || tampon[0] == 'q' || tampon[0] == 'Q') {
+            return 0;  /* Return to menu */
+        }
+
+        printf(COULEUR_ERREUR
+               "  Choix invalide. Entrez 1 (memes joueurs), 2 (nouveaux), 3 (menu)."
+               COULEUR_REINITIALISATION "\n");
     }
-
-    return (tampon[0] == 'y' || tampon[0] == 'Y') ? 1 : 0;
 }

@@ -39,25 +39,32 @@ int main(void)
 
         /* choixMenu == 1: New game */
         int rejouer = 1;
+        char nom1[TAILLE_NOM] = "";
+        char nom2[TAILLE_NOM] = "";
 
         while (rejouer) {
-            /* Read player names */
-            char nom1[TAILLE_NOM];
-            char nom2[TAILLE_NOM];
-
-            printf("\n");
-            if (!lireNomJoueur(nom1, "Joueur 1", 1)) {
-                break;  /* EOF during name entry */
-            }
-            if (!lireNomJoueur(nom2, "Joueur 2", 2)) {
-                break;  /* EOF during name entry */
+            if (rejouer == 1) {
+                /* Read new player names */
+                printf("\n");
+                if (!lireNomJoueur(nom1, "Joueur 1", 1)) {
+                    break;  /* EOF during name entry */
+                }
+                if (!lireNomJoueur(nom2, "Joueur 2", 2)) {
+                    break;  /* EOF during name entry */
+                }
+            } else if (rejouer == 2) {
+                /* Instant replay with same players */
+                printf("\n" COULEUR_TITRE
+                       "  Revanche ! %s (X) vs %s (O)"
+                       COULEUR_REINITIALISATION "\n",
+                       nom1, nom2);
             }
 
             /* Create game */
             Partie *partie = creerPartie(nom1, nom2);
             if (partie == NULL) {
                 printf(COULEUR_ERREUR
-                       "  Memory allocation failed. Returning to menu."
+                       "  Allocation mémoire échouée. Retour au menu."
                        COULEUR_REINITIALISATION "\n");
                 break;
             }
@@ -75,7 +82,7 @@ int main(void)
     }
 
     printf("\n" COULEUR_TITRE
-           "  Thank you for playing! Goodbye."
+           "  Merci d'avoir joue ! A bientot."
            COULEUR_REINITIALISATION "\n\n");
 
     return 0;
