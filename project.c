@@ -1,0 +1,642 @@
+/*============================================================================
+ * project.c — All implementations for Connect Four (Puissance 4)
+ *
+ * Organized in six sections:
+ *   1. Private helpers
+ *   2. Memory management
+ *   3. Grid operations
+ *   4. Alignment detection
+ *   5. Turn flow
+ *   6. Interface (menu, help, names, replay)
+ *============================================================================*/
+
+#include "puissance4.h"
+#include <string.h>
+#include <errno.h>
+#include <limits.h>
+#include <ctype.h>
+
+/* ========================================================================== *
+ *  Forward declarations of private helpers                                    *
+ * ========================================================================== */
+
+static int  lireLigne(char *tampon, int taille);
+static int  lireEntier(const char *chaine, int *resultat);
+static char symboleJoueur(int joueur);
+static const char *couleurJoueur(int joueur);
+static int  compterDirection(const Partie *partie, int ligne, int colonne,
+                             int deltaLigne, int deltaColonne, int joueur);
+static int  aGagneDernierCoup(const Partie *partie, int joueur);
+static int  alignementDirection(const Partie *partie, int joueur,
+                                int deltaLigne, int deltaColonne);
+
+/* ========================================================================== *
+ *  SECTION 1 — Private helpers                                                *
+ * ========================================================================== */
+
+/*
+ * lireLigne — Read one line from stdin into tampon.
+ * Strips the trailing newline. If the line was longer than taille-1,
+ * the remainder is discarded so that the next read starts fresh.
+ * Returns 1 on success, 0 on EOF.
+ */
+static int lireLigne(char *tampon, int taille)
+{
+    if (fgets(tampon, taille, stdin) == NULL) {
+        return 0;
+    }
+
+    size_t longueur = strlen(tampon);
+
+    if (longueur > 0 && tampon[longueur - 1] == '\n') {
+        tampon[longueur - 1] = '\0';
+    } else {
+        /* Line was too long: discard the rest */
+        int caractere;
+        while ((caractere = getchar()) != '\n' && caractere != EOF) {
+            /* consume leftover characters */
+        }
+    }
+
+    return 1;
+}
+
+/*
+ * lireEntier — Parse an integer from chaine using strtol.
+ * Rejects trailing non-whitespace characters (e.g. "3abc").
+ * Rejects overflow/underflow and empty strings.
+ * Returns 1 on success (result stored in *resultat), 0 on failure.
+ */
+static int lireEntier(const char *chaine, int *resultat)
+{
+    if (chaine == NULL || chaine[0] == '\0') {
+        return 0;
+    }
+
+    char *finConversion;
+    errno = 0;
+    long valeur = strtol(chaine, &finConversion, 10);
+
+    /* Reject if nothing was parsed */
+    if (finConversion == chaine) {
+        return 0;
+    }
+
+    /* Reject trailing non-whitespace characters like "3abc" */
+    while (*finConversion != '\0') {
+        if (!isspace((unsigned char)*finConversion)) {
+            return 0;
+        }
+        finConversion++;
+    }
+
+    /* Reject overflow / underflow */
+    if (errno == ERANGE || valeur < INT_MIN || valeur > INT_MAX) {
+        return 0;
+    }
+
+    *resultat = (int)valeur;
+    return 1;
+}
+
+/*
+ * symboleJoueur — Return 'X' or 'O' for the given player value.
+ */
+static char symboleJoueur(int joueur)
+{
+    return (joueur == JOUEUR_X) ? 'X' : 'O';
+}
+
+/*
+ * couleurJoueur — Return the ANSI color escape sequence for a player.
+ */
+static const char *couleurJoueur(int joueur)
+{
+    return (joueur == JOUEUR_X) ? COULEUR_JOUEUR_X : COULEUR_JOUEUR_O;
+}
+
+/*
+ * compterDirection — Count consecutive tokens of 'joueur' starting from
+ * (ligne, colonne) and moving by (deltaLigne, deltaColonne).
+ * Does NOT count the starting cell itself.
+ * Used by aGagneDernierCoup for the fast last-move check.
+ */
+static int compterDirection(const Partie *partie, int ligne, int colonne,
+                            int deltaLigne, int deltaColonne, int joueur)
+{
+    int nbConsecutifs = 0;
+    int ligneActuelle = ligne + deltaLigne;
+    int colonneActuelle = colonne + deltaColonne;
+
+    while (ligneActuelle >= 0 && ligneActuelle < NB_LIGNES &&
+           colonneActuelle >= 0 && colonneActuelle < NB_COLONNES &&
+           partie->grille[ligneActuelle][colonneActuelle] == (char)joueur) {
+        nbConsecutifs++;
+        ligneActuelle += deltaLigne;
+        colonneActuelle += deltaColonne;
+    }
+
+    return nbConsecutifs;
+}
+
+/*
+ * aGagneDernierCoup — Fast O(1) win check centered on the last move.
+ * For each of the 4 directions, counts tokens in both senses and checks
+ * if total >= NB_ALIGNES. Only valid when derniereLigne >= 0.
+ */
+static int aGagneDernierCoup(const Partie *partie, int joueur)
+{
+    if (partie == NULL || partie->derniereLigne < 0) {
+        return 0;
+    }
+
+    int ligne = partie->derniereLigne;
+    int colonne = partie->derniereColonne;
+
+    /* Direction vectors: horizontal, vertical, diag-down-right, diag-down-left */
+    static const int directions[NB_DIRECTIONS][2] = {
+        {0, 1}, {1, 0}, {1, 1}, {1, -1}
+    };
+
+    for (int i = 0; i < NB_DIRECTIONS; i++) {
+        int dl = directions[i][0];
+        int dc = directions[i][1];
+        int total = 1 + compterDirection(partie, ligne, colonne, dl, dc, joueur)
+                      + compterDirection(partie, ligne, colonne, -dl, -dc, joueur);
+        if (total >= NB_ALIGNES) {
+            return 1;
+        }
+    }
+
+    return 0;
+}
+
+/*
+ * alignementDirection — Full-grid scan for NB_ALIGNES consecutive tokens
+ * of 'joueur' in the direction (deltaLigne, deltaColonne).
+ * Used by the three public alignment functions to avoid code duplication.
+ */
+static int alignementDirection(const Partie *partie, int joueur,
+                                int deltaLigne, int deltaColonne)
+{
+    for (int ligne = 0; ligne < NB_LIGNES; ligne++) {
+        for (int colonne = 0; colonne < NB_COLONNES; colonne++) {
+            if (partie->grille[ligne][colonne] != (char)joueur) {
+                continue;
+            }
+
+            /* Check if NB_ALIGNES tokens fit within bounds */
+            int finLigne = ligne + (NB_ALIGNES - 1) * deltaLigne;
+            int finColonne = colonne + (NB_ALIGNES - 1) * deltaColonne;
+
+            if (finLigne < 0 || finLigne >= NB_LIGNES ||
+                finColonne < 0 || finColonne >= NB_COLONNES) {
+                continue;
+            }
+
+            int estAligne = 1;
+            for (int k = 1; k < NB_ALIGNES; k++) {
+                int ligneTest = ligne + k * deltaLigne;
+                int colonneTest = colonne + k * deltaColonne;
+                if (partie->grille[ligneTest][colonneTest] != (char)joueur) {
+                    estAligne = 0;
+                    break;
+                }
+            }
+
+            if (estAligne) {
+                return 1;
+            }
+        }
+    }
+
+    return 0;
+}
+
+/* ========================================================================== *
+ *  SECTION 2 — Memory management                                             *
+ * ========================================================================== */
+
+Partie *creerPartie(const char *nom1, const char *nom2)
+{
+    if (nom1 == NULL || nom2 == NULL) {
+        return NULL;
+    }
+
+    Partie *partie = malloc(sizeof(Partie));
+    if (partie == NULL) {
+        return NULL;
+    }
+
+    /* Initialize grid to empty */
+    initialiserGrille(partie);
+
+    /* Copy player names with bounded copy and forced terminator */
+    strncpy(partie->noms[0], nom1, TAILLE_NOM - 1);
+    partie->noms[0][TAILLE_NOM - 1] = '\0';
+
+    strncpy(partie->noms[1], nom2, TAILLE_NOM - 1);
+    partie->noms[1][TAILLE_NOM - 1] = '\0';
+
+    /* Player X (index 0) always starts */
+    partie->joueurCourant = JOUEUR_X;
+
+    return partie;
+}
+
+void detruirePartie(Partie *partie)
+{
+    free(partie);  /* free(NULL) is safe per the C standard */
+}
+
+/* ========================================================================== *
+ *  SECTION 3 — Grid operations                                                *
+ * ========================================================================== */
+
+void initialiserGrille(Partie *partie)
+{
+    if (partie == NULL) {
+        return;
+    }
+
+    for (int ligne = 0; ligne < NB_LIGNES; ligne++) {
+        for (int colonne = 0; colonne < NB_COLONNES; colonne++) {
+            partie->grille[ligne][colonne] = CASE_VIDE;
+        }
+    }
+
+    partie->nbJetons = 0;
+    partie->derniereLigne = -1;
+    partie->derniereColonne = -1;
+}
+
+void afficherGrille(const Partie *partie)
+{
+    if (partie == NULL) {
+        return;
+    }
+
+    /* Column numbers header */
+    printf("\n  ");
+    for (int colonne = 0; colonne < NB_COLONNES; colonne++) {
+#ifdef ASCII_ONLY
+        printf("  %d ", colonne + 1);
+#else
+        printf("  %d  ", colonne + 1);
+#endif
+    }
+    printf("\n");
+
+    /* Top border */
+    printf("  " BORD_HAUT_GAUCHE);
+    for (int colonne = 0; colonne < NB_COLONNES; colonne++) {
+        printf(BORD_HORIZONTAL);
+        if (colonne < NB_COLONNES - 1) {
+            printf(BORD_T_HAUT);
+        }
+    }
+    printf(BORD_HAUT_DROIT "\n");
+
+    /* Grid rows */
+    for (int ligne = 0; ligne < NB_LIGNES; ligne++) {
+        printf("  " BORD_VERTICAL);
+        for (int colonne = 0; colonne < NB_COLONNES; colonne++) {
+            char cellule = partie->grille[ligne][colonne];
+
+            if (cellule == (char)JOUEUR_X) {
+                printf("%s" JETON_X COULEUR_REINITIALISATION,
+                       COULEUR_JOUEUR_X);
+            } else if (cellule == (char)JOUEUR_O) {
+                printf("%s" JETON_O COULEUR_REINITIALISATION,
+                       COULEUR_JOUEUR_O);
+            } else {
+                printf(COULEUR_DIM JETON_VIDE COULEUR_REINITIALISATION);
+            }
+
+            printf(BORD_VERTICAL);
+        }
+        printf("\n");
+
+        /* Row separator or bottom border */
+        if (ligne < NB_LIGNES - 1) {
+            printf("  " BORD_T_GAUCHE);
+            for (int colonne = 0; colonne < NB_COLONNES; colonne++) {
+                printf(BORD_HORIZONTAL);
+                if (colonne < NB_COLONNES - 1) {
+                    printf(BORD_CROIX);
+                }
+            }
+            printf(BORD_T_DROIT "\n");
+        }
+    }
+
+    /* Bottom border */
+    printf("  " BORD_BAS_GAUCHE);
+    for (int colonne = 0; colonne < NB_COLONNES; colonne++) {
+        printf(BORD_HORIZONTAL);
+        if (colonne < NB_COLONNES - 1) {
+            printf(BORD_T_BAS);
+        }
+    }
+    printf(BORD_BAS_DROIT "\n\n");
+}
+
+int colonneValide(int colonne)
+{
+    return (colonne >= 0 && colonne < NB_COLONNES) ? 1 : 0;
+}
+
+int colonneLibre(const Partie *partie, int colonne)
+{
+    if (partie == NULL || !colonneValide(colonne)) {
+        return 0;
+    }
+
+    /* Row 0 is the top: if it's empty, the column has room */
+    return (partie->grille[0][colonne] == (char)CASE_VIDE) ? 1 : 0;
+}
+
+int placerJeton(Partie *partie, int colonne)
+{
+    if (partie == NULL || !colonneValide(colonne) || !colonneLibre(partie, colonne)) {
+        return 0;
+    }
+
+    /* Walk from bottom to top to find the lowest empty cell */
+    for (int ligne = NB_LIGNES - 1; ligne >= 0; ligne--) {
+        if (partie->grille[ligne][colonne] == (char)CASE_VIDE) {
+            partie->grille[ligne][colonne] = (char)partie->joueurCourant;
+            partie->nbJetons++;
+            partie->derniereLigne = ligne;
+            partie->derniereColonne = colonne;
+            return 1;
+        }
+    }
+
+    return 0;  /* Should not reach here given the colonneLibre check */
+}
+
+/* ========================================================================== *
+ *  SECTION 4 — Alignment detection                                            *
+ * ========================================================================== */
+
+int alignementHorizontal(const Partie *partie, int joueur)
+{
+    if (partie == NULL) {
+        return 0;
+    }
+    return alignementDirection(partie, joueur, 0, 1);
+}
+
+int alignementVertical(const Partie *partie, int joueur)
+{
+    if (partie == NULL) {
+        return 0;
+    }
+    return alignementDirection(partie, joueur, 1, 0);
+}
+
+int alignementDiagonal(const Partie *partie, int joueur)
+{
+    if (partie == NULL) {
+        return 0;
+    }
+    /* Descending diagonal (↘) and ascending diagonal (↗) */
+    return alignementDirection(partie, joueur, 1, 1) ||
+           alignementDirection(partie, joueur, 1, -1);
+}
+
+int joueurAGagne(const Partie *partie, int joueur)
+{
+    if (partie == NULL) {
+        return 0;
+    }
+    return alignementHorizontal(partie, joueur) ||
+           alignementVertical(partie, joueur) ||
+           alignementDiagonal(partie, joueur);
+}
+
+/* ========================================================================== *
+ *  SECTION 5 — Turn flow                                                      *
+ * ========================================================================== */
+
+int grillePleine(const Partie *partie)
+{
+    if (partie == NULL) {
+        return 0;
+    }
+    return (partie->nbJetons == NB_LIGNES * NB_COLONNES) ? 1 : 0;
+}
+
+int demanderColonne(const Partie *partie)
+{
+    if (partie == NULL) {
+        return -1;
+    }
+
+    char tampon[TAILLE_TAMPON_SAISIE];
+    int joueur = partie->joueurCourant;
+
+    for (;;) {
+        printf("%s%s (%c)%s, enter column (1-%d): ",
+               couleurJoueur(joueur),
+               partie->noms[joueur - 1],
+               symboleJoueur(joueur),
+               COULEUR_REINITIALISATION,
+               NB_COLONNES);
+        fflush(stdout);
+
+        if (!lireLigne(tampon, TAILLE_TAMPON_SAISIE)) {
+            return -1;  /* EOF */
+        }
+
+        int choix;
+        if (!lireEntier(tampon, &choix)) {
+            printf(COULEUR_ERREUR
+                   "  Invalid input. Please enter a number between 1 and %d."
+                   COULEUR_REINITIALISATION "\n", NB_COLONNES);
+            continue;
+        }
+
+        int colonne = choix - 1;  /* Convert from 1-based to 0-based */
+
+        if (!colonneValide(colonne)) {
+            printf(COULEUR_ERREUR
+                   "  Column %d is out of range. Choose between 1 and %d."
+                   COULEUR_REINITIALISATION "\n", choix, NB_COLONNES);
+            continue;
+        }
+
+        if (!colonneLibre(partie, colonne)) {
+            printf(COULEUR_ERREUR
+                   "  Column %d is full. Choose another column."
+                   COULEUR_REINITIALISATION "\n", choix);
+            continue;
+        }
+
+        return colonne;
+    }
+}
+
+void changerJoueur(Partie *partie)
+{
+    if (partie == NULL) {
+        return;
+    }
+    /* Toggle between JOUEUR_X (1) and JOUEUR_O (2): 3 - 1 = 2, 3 - 2 = 1 */
+    partie->joueurCourant = 3 - partie->joueurCourant;
+}
+
+void jouerPartie(Partie *partie)
+{
+    if (partie == NULL) {
+        return;
+    }
+
+    printf("\n" COULEUR_TITRE
+           "  Game starts! %s (X) vs %s (O)"
+           COULEUR_REINITIALISATION "\n",
+           partie->noms[0], partie->noms[1]);
+
+    for (;;) {
+        afficherGrille(partie);
+
+        int colonne = demanderColonne(partie);
+        if (colonne < 0) {
+            /* EOF: end the game cleanly */
+            printf("\n" COULEUR_IMPORTANT
+                   "  End of input detected. Game interrupted."
+                   COULEUR_REINITIALISATION "\n");
+            return;
+        }
+
+        placerJeton(partie, colonne);
+
+        /* Check victory BEFORE draw (a win on the 42nd token is a win) */
+        if (aGagneDernierCoup(partie, partie->joueurCourant)) {
+            afficherGrille(partie);
+            printf(COULEUR_SUCCES
+                   "  Congratulations, %s (%c) wins!"
+                   COULEUR_REINITIALISATION "\n\n",
+                   partie->noms[partie->joueurCourant - 1],
+                   symboleJoueur(partie->joueurCourant));
+            return;
+        }
+
+        if (grillePleine(partie)) {
+            afficherGrille(partie);
+            printf(COULEUR_IMPORTANT
+                   "  The grid is full. It's a draw!"
+                   COULEUR_REINITIALISATION "\n\n");
+            return;
+        }
+
+        changerJoueur(partie);
+    }
+}
+
+/* ========================================================================== *
+ *  SECTION 6 — Interface (menu, help, name input, replay)                     *
+ * ========================================================================== */
+
+int afficherMenu(void)
+{
+    char tampon[TAILLE_TAMPON_SAISIE];
+
+    printf("\n");
+    printf(COULEUR_TITRE
+           "  ╔═══════════════════════════╗\n"
+           "  ║      PUISSANCE  4         ║\n"
+           "  ╠═══════════════════════════╣\n"
+           "  ║  1. New Game              ║\n"
+           "  ║  2. How to Play           ║\n"
+           "  ║  3. Quit                  ║\n"
+           "  ╚═══════════════════════════╝"
+           COULEUR_REINITIALISATION "\n\n");
+
+    for (;;) {
+        printf("  Your choice: ");
+        fflush(stdout);
+
+        if (!lireLigne(tampon, TAILLE_TAMPON_SAISIE)) {
+            return -1;  /* EOF */
+        }
+
+        int choix;
+        if (!lireEntier(tampon, &choix) || choix < 1 || choix > 3) {
+            printf(COULEUR_ERREUR
+                   "  Invalid choice. Please enter 1, 2, or 3."
+                   COULEUR_REINITIALISATION "\n");
+            continue;
+        }
+
+        return choix;
+    }
+}
+
+void afficherAide(void)
+{
+    printf("\n" COULEUR_TITRE
+           "  ═══════════ HOW TO PLAY ═══════════"
+           COULEUR_REINITIALISATION "\n\n");
+
+    printf("  Connect Four is a two-player game.\n");
+    printf("  Players take turns dropping tokens (X or O)\n");
+    printf("  into one of 7 columns. Tokens fall to the\n");
+    printf("  lowest available position in the column.\n\n");
+    printf("  " COULEUR_IMPORTANT "Goal:" COULEUR_REINITIALISATION
+           " Align 4 tokens in a row — horizontally,\n");
+    printf("  vertically, or diagonally — before your opponent.\n\n");
+    printf("  " COULEUR_IMPORTANT "Input:" COULEUR_REINITIALISATION
+           " Enter a column number from 1 to 7.\n");
+    printf("  If a column is full, choose another one.\n\n");
+    printf("  " COULEUR_IMPORTANT "Draw:" COULEUR_REINITIALISATION
+           " If all 42 cells are filled with no winner,\n");
+    printf("  the game ends in a draw.\n\n");
+}
+
+int lireNomJoueur(char *destination, const char *nomParDefaut, int numero)
+{
+    if (destination == NULL || nomParDefaut == NULL) {
+        return 0;
+    }
+
+    char tampon[TAILLE_TAMPON_SAISIE];
+
+    printf("  Enter name for Player %d (default: %s): ", numero, nomParDefaut);
+    fflush(stdout);
+
+    if (!lireLigne(tampon, TAILLE_TAMPON_SAISIE)) {
+        /* EOF: use default name */
+        strncpy(destination, nomParDefaut, TAILLE_NOM - 1);
+        destination[TAILLE_NOM - 1] = '\0';
+        return 0;
+    }
+
+    if (tampon[0] == '\0') {
+        /* Empty input: use default name, announce it */
+        strncpy(destination, nomParDefaut, TAILLE_NOM - 1);
+        destination[TAILLE_NOM - 1] = '\0';
+        printf(COULEUR_DIM "  (Using default name: %s)"
+               COULEUR_REINITIALISATION "\n", nomParDefaut);
+    } else {
+        strncpy(destination, tampon, TAILLE_NOM - 1);
+        destination[TAILLE_NOM - 1] = '\0';
+    }
+
+    return 1;
+}
+
+int demanderRejouer(void)
+{
+    char tampon[TAILLE_TAMPON_SAISIE];
+
+    printf("  Play again? (y/n): ");
+    fflush(stdout);
+
+    if (!lireLigne(tampon, TAILLE_TAMPON_SAISIE)) {
+        return 0;  /* EOF means no */
+    }
+
+    return (tampon[0] == 'y' || tampon[0] == 'Y') ? 1 : 0;
+}

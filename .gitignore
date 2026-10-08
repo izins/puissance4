@@ -1,0 +1,5 @@
+*.exe
+*.o
+*.out
+compile_errors.txt
+compile_out.txt
