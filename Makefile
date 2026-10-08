@@ -1,14 +1,22 @@
 # ============================================================================
 # Makefile — Build helper for Connect Four (Puissance 4)
+# Cross-platform support for Windows (MinGW) and Linux / macOS
 # ============================================================================
 
 CC       = gcc
 CFLAGS   = -std=c11 -Wall -Wextra -Wpedantic -Wshadow -Wconversion -O2
 LDFLAGS  =
-TARGET   = puissance4
 SOURCES  = main.c project.c
 OBJECTS  = $(SOURCES:.c=.o)
 HEADERS  = puissance4.h
+
+ifeq ($(OS),Windows_NT)
+    TARGET = puissance4.exe
+    RM     = del /F /Q 2>NUL || rem
+else
+    TARGET = puissance4
+    RM     = rm -f
+endif
 
 # Default target
 all: $(TARGET)
@@ -37,6 +45,6 @@ ascii: clean $(TARGET)
 
 # Clean build artifacts
 clean:
-	rm -f $(TARGET) $(OBJECTS)
+	-$(RM) $(TARGET) $(OBJECTS)
 
 .PHONY: all run debug ascii clean
