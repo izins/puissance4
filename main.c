@@ -8,8 +8,26 @@
 
 #include "puissance4.h"
 
+#ifdef _WIN32
+#include <windows.h>
+static void activerCouleursWindows(void)
+{
+    HANDLE hOut = GetStdHandle(STD_OUTPUT_HANDLE);
+    if (hOut != INVALID_HANDLE_VALUE) {
+        DWORD dwMode = 0;
+        if (GetConsoleMode(hOut, &dwMode)) {
+            dwMode |= 0x0004; /* ENABLE_VIRTUAL_TERMINAL_PROCESSING */
+            SetConsoleMode(hOut, dwMode);
+        }
+    }
+}
+#endif
+
 int main(void)
 {
+#ifdef _WIN32
+    activerCouleursWindows();
+#endif
     int choixMenu;
 
     /* Main menu loop */

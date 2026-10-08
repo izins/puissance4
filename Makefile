@@ -12,10 +12,10 @@ HEADERS  = puissance4.h
 
 ifeq ($(OS),Windows_NT)
     TARGET = puissance4.exe
-    RM     = del /F /Q 2>NUL || rem
+    CLEAN_CMD = cmd /c "del /F /Q $(TARGET) $(OBJECTS) 2>NUL || exit 0"
 else
     TARGET = puissance4
-    RM     = rm -f
+    CLEAN_CMD = rm -f $(TARGET) $(OBJECTS)
 endif
 
 # Default target
@@ -45,6 +45,6 @@ ascii: clean $(TARGET)
 
 # Clean build artifacts
 clean:
-	-$(RM) $(TARGET) $(OBJECTS)
+	-$(CLEAN_CMD)
 
 .PHONY: all run debug ascii clean
