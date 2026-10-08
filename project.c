@@ -544,18 +544,30 @@ int afficherMenu(void)
     char tampon[TAILLE_TAMPON_SAISIE];
 
     printf("\n");
+#ifdef ASCII_ONLY
+    printf(COULEUR_TITRE
+           "  +---------------------------+\n"
+           "  |      PUISSANCE  4         |\n"
+           "  +---------------------------+\n"
+           "  |  1. Nouvelle Partie       |\n"
+           "  |  2. Comment Jouer         |\n"
+           "  |  3. Quitter               |\n"
+           "  +---------------------------+"
+           COULEUR_REINITIALISATION "\n\n");
+#else
     printf(COULEUR_TITRE
            "  ╔═══════════════════════════╗\n"
            "  ║      PUISSANCE  4         ║\n"
            "  ╠═══════════════════════════╣\n"
-           "  ║  1. New Game              ║\n"
-           "  ║  2. How to Play           ║\n"
-           "  ║  3. Quit                  ║\n"
+           "  ║  1. Nouvelle Partie       ║\n"
+           "  ║  2. Comment Jouer         ║\n"
+           "  ║  3. Quitter               ║\n"
            "  ╚═══════════════════════════╝"
            COULEUR_REINITIALISATION "\n\n");
+#endif
 
     for (;;) {
-        printf("  Your choice: ");
+        printf("  Votre choix (1-3) : ");
         fflush(stdout);
 
         if (!lireLigne(tampon, TAILLE_TAMPON_SAISIE)) {
@@ -565,7 +577,7 @@ int afficherMenu(void)
         int choix;
         if (!lireEntier(tampon, &choix) || choix < 1 || choix > 3) {
             printf(COULEUR_ERREUR
-                   "  Invalid choice. Please enter 1, 2, or 3."
+                   "  Choix invalide. Veuillez entrer 1, 2 ou 3."
                    COULEUR_REINITIALISATION "\n");
             continue;
         }
@@ -576,23 +588,30 @@ int afficherMenu(void)
 
 void afficherAide(void)
 {
-    printf("\n" COULEUR_TITRE
-           "  ═══════════ HOW TO PLAY ═══════════"
+    printf("\n");
+#ifdef ASCII_ONLY
+    printf(COULEUR_TITRE
+           "  =========== COMMENT JOUER ==========="
            COULEUR_REINITIALISATION "\n\n");
+#else
+    printf(COULEUR_TITRE
+           "  ═══════════ COMMENT JOUER ═══════════"
+           COULEUR_REINITIALISATION "\n\n");
+#endif
 
-    printf("  Connect Four is a two-player game.\n");
-    printf("  Players take turns dropping tokens (X or O)\n");
-    printf("  into one of 7 columns. Tokens fall to the\n");
-    printf("  lowest available position in the column.\n\n");
-    printf("  " COULEUR_IMPORTANT "Goal:" COULEUR_REINITIALISATION
-           " Align 4 tokens in a row — horizontally,\n");
-    printf("  vertically, or diagonally — before your opponent.\n\n");
-    printf("  " COULEUR_IMPORTANT "Input:" COULEUR_REINITIALISATION
-           " Enter a column number from 1 to 7.\n");
-    printf("  If a column is full, choose another one.\n\n");
-    printf("  " COULEUR_IMPORTANT "Draw:" COULEUR_REINITIALISATION
-           " If all 42 cells are filled with no winner,\n");
-    printf("  the game ends in a draw.\n\n");
+    printf("  Le Puissance 4 se joue a deux joueurs.\n");
+    printf("  Chaque joueur depose un jeton (X ou O) a tour de role\n");
+    printf("  dans l'une des 7 colonnes. Le jeton tombe jusqu'a la\n");
+    printf("  case libre la plus basse disponible.\n\n");
+    printf("  " COULEUR_IMPORTANT "Objectif :" COULEUR_REINITIALISATION
+           " Aligner 4 jetons identiques (horizontalement,\n");
+    printf("  verticalement ou en diagonale) avant son adversaire.\n\n");
+    printf("  " COULEUR_IMPORTANT "Saisie :" COULEUR_REINITIALISATION
+           " Entrez un numero de colonne entre 1 et 7.\n");
+    printf("  Si une colonne est pleine, choisissez-en une autre.\n\n");
+    printf("  " COULEUR_IMPORTANT "Match nul :" COULEUR_REINITIALISATION
+           " Si les 42 cases sont remplies sans vainqueur,\n");
+    printf("  la partie s'arrete sur une egalite.\n\n");
 }
 
 int lireNomJoueur(char *destination, const char *nomParDefaut, int numero)
