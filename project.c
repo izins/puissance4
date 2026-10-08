@@ -232,11 +232,8 @@ Partie *creerPartie(const char *nom1, const char *nom2)
     initialiserGrille(partie);
 
     /* Copy player names with bounded copy and forced terminator */
-    strncpy(partie->noms[0], nom1, TAILLE_NOM - 1);
-    partie->noms[0][TAILLE_NOM - 1] = '\0';
-
-    strncpy(partie->noms[1], nom2, TAILLE_NOM - 1);
-    partie->noms[1][TAILLE_NOM - 1] = '\0';
+    snprintf(partie->noms[0], TAILLE_NOM, "%s", nom1);
+    snprintf(partie->noms[1], TAILLE_NOM, "%s", nom2);
 
     /* Player X (index 0) always starts */
     partie->joueurCourant = JOUEUR_X;
@@ -428,6 +425,46 @@ int grillePleine(const Partie *partie)
     return (partie->nbJetons == NB_LIGNES * NB_COLONNES) ? 1 : 0;
 }
 
+static void renommerJoueurEnCours(Partie *partie)
+{
+    if (partie == NULL) {
+        return;
+    }
+
+    char tampon[TAILLE_TAMPON_SAISIE];
+    printf("\n" COULEUR_TITRE
+           "  Changer le nom de quel joueur ? (1: %s, 2: %s) : "
+           COULEUR_REINITIALISATION,
+           partie->noms[0], partie->noms[1]);
+    fflush(stdout);
+
+    if (!lireLigne(tampon, TAILLE_TAMPON_SAISIE)) {
+        return;
+    }
+
+    int num;
+    if (!lireEntier(tampon, &num) || (num != 1 && num != 2)) {
+        printf(COULEUR_ERREUR
+               "  Choix invalide. Entrez 1 ou 2."
+               COULEUR_REINITIALISATION "\n\n");
+        return;
+    }
+
+    char nomParDefaut[TAILLE_NOM];
+    snprintf(nomParDefaut, sizeof(nomParDefaut), "Joueur %d", num);
+
+    char nouveauNom[TAILLE_NOM];
+    printf("\n");
+    if (lireNomJoueur(nouveauNom, nomParDefaut, num)) {
+        size_t idx = (size_t)(num - 1);
+        snprintf(partie->noms[idx], TAILLE_NOM, "%s", nouveauNom);
+        printf(COULEUR_SUCCES
+               "  -> Le Joueur %d (%c) s'appelle desormais %s !"
+               COULEUR_REINITIALISATION "\n\n",
+               num, (num == 1) ? 'X' : 'O', partie->noms[idx]);
+    }
+}
+
 int demanderColonne(const Partie *partie)
 {
     if (partie == NULL) {
@@ -438,9 +475,9 @@ int demanderColonne(const Partie *partie)
     int joueur = partie->joueurCourant;
 
     for (;;) {
-        printf("%s%s (%c)%s, entrez la colonne (1-%d) ou 0/c pour passer le tour : ",
+        printf("%s%s (%c)%s, entrez la colonne (1-%d) [0:passer, n:renommer] : ",
                couleurJoueur(joueur),
-               partie->noms[joueur - 1],
+               partie->noms[(size_t)(joueur - 1)],
                symboleJoueur(joueur),
                COULEUR_REINITIALISATION,
                NB_COLONNES);
@@ -450,21 +487,26 @@ int demanderColonne(const Partie *partie)
             return -1;  /* EOF */
         }
 
-        /* Support 'c', 'C', 's', 'S' for changing player */
+        /* Support 'c', 'C', 's', 'S' for changing player turn */
         if (tampon[0] == 'c' || tampon[0] == 'C' || tampon[0] == 's' || tampon[0] == 'S') {
-            return -2;  /* Change player */
+            return -2;  /* Change player turn */
+        }
+
+        /* Support 'n', 'N' for renaming a player mid-game */
+        if (tampon[0] == 'n' || tampon[0] == 'N') {
+            return -3;  /* Rename player */
         }
 
         int choix;
         if (!lireEntier(tampon, &choix)) {
             printf(COULEUR_ERREUR
-                   "  Saisie invalide. Entrez un nombre entre 1 et %d (ou 0 pour passer)."
+                   "  Saisie invalide. Entrez 1-%d, 0 (passer) ou n (renommer)."
                    COULEUR_REINITIALISATION "\n", NB_COLONNES);
             continue;
         }
 
         if (choix == 0) {
-            return -2;  /* Change player */
+            return -2;  /* Change player turn */
         }
 
         int colonne = choix - 1;  /* Convert from 1-based to 0-based */
@@ -525,8 +567,14 @@ void jouerPartie(Partie *partie)
             printf("\n" COULEUR_IMPORTANT
                    "  -> Tour passe ! C'est maintenant a %s (%c) de jouer."
                    COULEUR_REINITIALISATION "\n",
-                   partie->noms[partie->joueurCourant - 1],
+                   partie->noms[(size_t)(partie->joueurCourant - 1)],
                    symboleJoueur(partie->joueurCourant));
+            continue;
+        }
+
+        if (colonne == -3) {
+            /* Rename a player mid-game */
+            renommerJoueurEnCours(partie);
             continue;
         }
 
@@ -538,7 +586,7 @@ void jouerPartie(Partie *partie)
             printf(COULEUR_SUCCES
                    "  Felicitations, %s (%c) remporte la partie !"
                    COULEUR_REINITIALISATION "\n\n",
-                   partie->noms[partie->joueurCourant - 1],
+                   partie->noms[(size_t)(partie->joueurCourant - 1)],
                    symboleJoueur(partie->joueurCourant));
             return;
         }
