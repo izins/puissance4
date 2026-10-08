@@ -438,7 +438,7 @@ int demanderColonne(const Partie *partie)
     int joueur = partie->joueurCourant;
 
     for (;;) {
-        printf("%s%s (%c)%s, enter column (1-%d): ",
+        printf("%s%s (%c)%s, entrez la colonne (1-%d) ou 0/c pour passer le tour : ",
                couleurJoueur(joueur),
                partie->noms[joueur - 1],
                symboleJoueur(joueur),
@@ -450,26 +450,35 @@ int demanderColonne(const Partie *partie)
             return -1;  /* EOF */
         }
 
+        /* Support 'c', 'C', 's', 'S' for changing player */
+        if (tampon[0] == 'c' || tampon[0] == 'C' || tampon[0] == 's' || tampon[0] == 'S') {
+            return -2;  /* Change player */
+        }
+
         int choix;
         if (!lireEntier(tampon, &choix)) {
             printf(COULEUR_ERREUR
-                   "  Invalid input. Please enter a number between 1 and %d."
+                   "  Saisie invalide. Entrez un nombre entre 1 et %d (ou 0 pour passer)."
                    COULEUR_REINITIALISATION "\n", NB_COLONNES);
             continue;
+        }
+
+        if (choix == 0) {
+            return -2;  /* Change player */
         }
 
         int colonne = choix - 1;  /* Convert from 1-based to 0-based */
 
         if (!colonneValide(colonne)) {
             printf(COULEUR_ERREUR
-                   "  Column %d is out of range. Choose between 1 and %d."
+                   "  Colonne %d hors limites. Choisissez entre 1 et %d."
                    COULEUR_REINITIALISATION "\n", choix, NB_COLONNES);
             continue;
         }
 
         if (!colonneLibre(partie, colonne)) {
             printf(COULEUR_ERREUR
-                   "  Column %d is full. Choose another column."
+                   "  La colonne %d est pleine. Choisissez une autre colonne."
                    COULEUR_REINITIALISATION "\n", choix);
             continue;
         }
@@ -494,7 +503,7 @@ void jouerPartie(Partie *partie)
     }
 
     printf("\n" COULEUR_TITRE
-           "  Game starts! %s (X) vs %s (O)"
+           "  La partie commence ! %s (X) vs %s (O)"
            COULEUR_REINITIALISATION "\n",
            partie->noms[0], partie->noms[1]);
 
@@ -502,12 +511,23 @@ void jouerPartie(Partie *partie)
         afficherGrille(partie);
 
         int colonne = demanderColonne(partie);
-        if (colonne < 0) {
+        if (colonne == -1) {
             /* EOF: end the game cleanly */
             printf("\n" COULEUR_IMPORTANT
-                   "  End of input detected. Game interrupted."
+                   "  Fin de saisie detectee. Partie interrompue."
                    COULEUR_REINITIALISATION "\n");
             return;
+        }
+
+        if (colonne == -2) {
+            /* Change player / pass turn */
+            changerJoueur(partie);
+            printf("\n" COULEUR_IMPORTANT
+                   "  -> Tour passe ! C'est maintenant a %s (%c) de jouer."
+                   COULEUR_REINITIALISATION "\n",
+                   partie->noms[partie->joueurCourant - 1],
+                   symboleJoueur(partie->joueurCourant));
+            continue;
         }
 
         placerJeton(partie, colonne);
@@ -516,7 +536,7 @@ void jouerPartie(Partie *partie)
         if (aGagneDernierCoup(partie, partie->joueurCourant)) {
             afficherGrille(partie);
             printf(COULEUR_SUCCES
-                   "  Congratulations, %s (%c) wins!"
+                   "  Felicitations, %s (%c) remporte la partie !"
                    COULEUR_REINITIALISATION "\n\n",
                    partie->noms[partie->joueurCourant - 1],
                    symboleJoueur(partie->joueurCourant));
@@ -526,7 +546,7 @@ void jouerPartie(Partie *partie)
         if (grillePleine(partie)) {
             afficherGrille(partie);
             printf(COULEUR_IMPORTANT
-                   "  The grid is full. It's a draw!"
+                   "  La grille est pleine. Match nul !"
                    COULEUR_REINITIALISATION "\n\n");
             return;
         }
